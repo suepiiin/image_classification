@@ -40,7 +40,7 @@ class SimpleNet(nn.Module):
         self.conv3 = nn.Conv2d(16, 16, 3, 1, padding=1)
         self.conv4 = nn.Conv2d(16, 16, 3, 1, padding=1)
         self.conv5 = nn.Conv2d(16, 16, 3, 1, padding=1)
-        self.fc1 = nn.Linear(int(76800/16), 128)
+        self.fc1 = nn.Linear(int(1120), 128)
         self.fc2 = nn.Linear(128, DISCRETIZATION)
         nn.init.kaiming_normal_(self.conv1.weight)
         nn.init.kaiming_normal_(self.conv2.weight)
@@ -51,6 +51,7 @@ class SimpleNet(nn.Module):
         nn.init.kaiming_normal_(self.fc2.weight)
 
     def forward(self, x):
+        x = nn.MaxPool2d(kernel_size=2)(x)
         x = self.conv1(x)
         x = F.relu(x)
         x = nn.MaxPool2d(kernel_size=2)(x)

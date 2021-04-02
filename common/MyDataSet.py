@@ -4,6 +4,7 @@ import io
 import sys
 import pandas as pd
 import cv2
+#from PIL import Image
 
 LABEL_IDX = 2
 IMG_IDX = 1
@@ -22,6 +23,7 @@ class MyDataset(Dataset):
       img_name = self.image_dataframe.iat[idx, IMG_IDX]
       
       image = cv2.imread(img_name)
+      #image = Image.open(img_name)
       if self.transform:
           image = self.transform(image)
       

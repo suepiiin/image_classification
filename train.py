@@ -20,9 +20,8 @@ from common.MyDataSet import MyDataset
 from models.samplenet import SampleNet, SimpleNet
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/../config")
-#import learning_config
 
-DISCRETIZATION = 3#learning_config.Discretization_number
+DISCRETIZATION = 3
 
 
 def main():
@@ -34,23 +33,34 @@ def main():
 
 	# Prepare dataset.
 	np.random.seed(seed=0)
-	image_dataframe = pd.read_csv(args.data_csv, engine='python', header=None)
+	#"""
+	image_dataframe = pd.read_csv(args.data_csv + "train_test.csv", engine='python', header=None)
 	image_dataframe = image_dataframe.reindex(np.random.permutation(image_dataframe.index))
 	test_num = int(len(image_dataframe) * 0.2)
 	train_dataframe = image_dataframe[test_num:]
 	test_dataframe = image_dataframe[:test_num]
-	train_data = MyDataset(train_dataframe, transform=transforms.ToTensor())
-	test_data = MyDataset(test_dataframe, transform=transforms.ToTensor())
-	train_loader = torch.utils.data.DataLoader(train_data, batch_size=20, shuffle=True)
-	test_loader = torch.utils.data.DataLoader(test_data, batch_size=20)
+	"""
+	image_dataframe = pd.read_csv(args.data_csv + "train.csv", engine='python', header=None)
+	train_dataframe = image_dataframe
+	image_dataframe = pd.read_csv(args.data_csv + "test.csv", engine='python', header=None)
+	test_dataframe = image_dataframe
+	"""
+	transform = transforms.Compose([
+		#transforms.Resize(100),
+		transforms.ToTensor()
+	])
+
+	train_data = MyDataset(train_dataframe, transform=transform)
+	test_data = MyDataset(test_dataframe, transform=transform)
+
+	train_loader = torch.utils.data.DataLoader(train_data, batch_size=32, shuffle=True)
+	test_loader = torch.utils.data.DataLoader(test_data, batch_size=32)
 	
 	print('data set')
 	# Set a model.
 	if args.model == 'resnet18':
 		model = models.resnet18()
 		model.fc = torch.nn.Linear(512, DISCRETIZATION)
-	elif args.model == 'samplenet':
-		model = SampleNet(DISCRETIZATION)
 	elif args.model == 'simplenet':
 		model = SimpleNet(DISCRETIZATION)
 	else:
@@ -58,12 +68,9 @@ def main():
 	model.train()
 	model = model.to(device)
 
-	print('model set')
 	# Set loss function and optimization function.
 	criterion = nn.CrossEntropyLoss()
 	optimizer = optim.Adam(model.parameters(), lr=args.lr)
-	#optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
-	print('optimizer set')
 	
 	# Train and test.
 	print('Train starts')
@@ -72,22 +79,22 @@ def main():
 		train_acc, train_loss = train(model, device, train_loader, criterion, optimizer)
 		
 		# Output score.
-		if(epoch%args.test_interval == 0):
+                # Save a model checkpoint.
+		if(epoch%args.test_interval == 0 or epoch+1 == args.n_epoch):
 			test_acc, test_loss = test(model, device, test_loader, criterion)
 
 			stdout_temp = 'epoch: {:>3}, train acc: {:<8}, train loss: {:<8}, test acc: {:<8}, test loss: {:<8}'
 			print(stdout_temp.format(epoch+1, train_acc, train_loss, test_acc, test_loss))
 
+			model_ckpt_path = args.model_ckpt_path_temp.format(epoch+1, test_acc)
+			torch.save(model.state_dict(), model_ckpt_path)
+			print('Saved a model checkpoint at {}'.format(model_ckpt_path))
+			print('')
+
 		else:	
 			stdout_temp = 'epoch: {:>3}, train acc: {:<8}, train loss: {:<8}' #, test acc: {:<8}, test loss: {:<8}'
 			print(stdout_temp.format(epoch+1, train_acc, train_loss)) #, test_acc, test_loss))
 
-		# Save a model checkpoint.
-		if(epoch%args.save_model_interval == 0 or epoch+1 == args.n_epoch):
-			model_ckpt_path = args.model_ckpt_path_temp.format(args.dataset_name, args.model_name, epoch+1)
-			torch.save(model.state_dict(), model_ckpt_path)
-			print('Saved a model checkpoint at {}'.format(model_ckpt_path))
-			print('')
 
 
 def train(model, device, train_loader, criterion, optimizer):
@@ -143,19 +150,16 @@ def test(model, device, test_loader, criterion):
 		
 	test_acc, test_loss = calc_score(output_list, target_list, running_loss, test_loader)
 
-	print('confusion_matrix')
-	print(confusion_matrix(output_list, target_list))
-	print('classification_report')
-	print(classification_report(output_list, target_list))
+	#print('confusion_matrix')
+	#print(confusion_matrix(output_list, target_list))
+	#print('classification_report')
+	#print(classification_report(output_list, target_list))
 
 	return test_acc, test_loss
 
 
 
 def calc_score(output_list, target_list, running_loss, data_loader):
-	# Calculate accuracy.
-	#result = classification_report(output_list, target_list) #, output_dict=True)
-	#acc = round(result['weighted avg']['f1-score'], 6)
 	acc = round(f1_score(output_list, target_list, average='micro'), 6)
 	loss = round(running_loss / len(data_loader.dataset), 6)
 
@@ -166,16 +170,13 @@ def parse_args():
 	# Set arguments.
 	arg_parser = argparse.ArgumentParser(description="Image Classification")
 	
-	arg_parser.add_argument("--dataset_name", type=str, default='sim_race')
-	arg_parser.add_argument("--data_csv", type=str, default=os.environ['HOME'] + '/Images_from_rosbag/_2020-11-05-01-45-29_2/_2020-11-05-01-45-29.csv')
-	arg_parser.add_argument("--model", type=str, default='resnet18')
-	arg_parser.add_argument("--model_name", type=str, default='joycon_ResNet18')
-	arg_parser.add_argument("--model_ckpt_dir", type=str, default=os.environ['HOME'] + '/work/experiments/models/checkpoints/')
-	arg_parser.add_argument("--model_ckpt_path_temp", type=str, default=os.environ['HOME'] + '/work/experiments/models/checkpoints/{}_{}_epoch={}.pth')
-	arg_parser.add_argument('--n_epoch', default=20, type=int, help='The number of epoch')
+	arg_parser.add_argument("--data_csv", type=str, default='/datas/path/')
+	arg_parser.add_argument("--model", type=str, default='simplenet')
+	arg_parser.add_argument("--model_ckpt_dir", type=str, default='output/checkpoints/')
+	arg_parser.add_argument("--model_ckpt_path_temp", type=str, default='output/checkpoints/epoch{}_acc{:.3f}.pth')
+	arg_parser.add_argument('--n_epoch', default=10, type=int, help='The number of epoch')
 	arg_parser.add_argument('--lr', default=0.001, type=float, help='Learning rate')
-	arg_parser.add_argument('--test_interval', default=5, type=int, help='test interval')
-	arg_parser.add_argument('--save_model_interval', default=5, type=int, help='save model interval')
+	arg_parser.add_argument('--test_interval', default=2, type=int, help='test interval')
 
 	args = arg_parser.parse_args()
 
